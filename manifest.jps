@@ -48,6 +48,7 @@ description:
 globals:
   env: ${env.name}
   nodeID: ${targetNodes.id}
+  repo: ${env.name}-node${targetNodes.id}-${fn.random}
 
 settings:
   fields:
@@ -125,7 +126,7 @@ actions:
     vars:
       AWS_ACCESS_KEY_ID: ${settings.s3ak}
       AWS_SECRET_ACCESS_KEY: ${settings.s3sk}
-      RESTIC_REPOSITORY: s3:s3.hosteur.io/${globals.env}-node${globals.nodeID}-${fn.random}
+      RESTIC_REPOSITORY: s3:s3.hosteur.io/${globals.repo}
       RESTIC_PASSWORD: ${settings.s3bucketpass}
       RESTIC_BACKUPPATH: ${settings.backuppath}
 
@@ -149,12 +150,12 @@ actions:
           #!/bin/bash
           export AWS_ACCESS_KEY_ID=${settings.s3ak}
           export AWS_SECRET_ACCESS_KEY=${settings.s3sk}
-          export RESTIC_REPOSITORY=s3:s3.hosteur.io/${globals.env}-node${globals.nodeID}-${fn.random}
+          export RESTIC_REPOSITORY=s3:s3.hosteur.io/${globals.repo}
           export RESTIC_PASSWORD=${settings.s3bucketpass}
           export RESTIC_BACKUPPATH=${settings.backuppath}
           restic backup --tag Scheduled $RESTIC_BACKUPPATH >>/var/log/hosteurbackup.log 2>/var/log/hosteurbackup_err.log
-          restic forget --keep-daily ${settings.spretday} --keep-monthly ${settings.spretmonth} --keep-yearly ${settings.spretyear} >>/var/log/hosteurbackup.log 2>/var/log/hosteurbackup_err.log
-          restic prune >>/var/log/hosteurbackup.log 2>/var/log/hosteurbackup_err.log
+          restic forget --keep-daily ${settings.spretday} --keep-monthly ${settings.spretmonth} --keep-yearly ${settings.spretyear} --tag Scheduled >>/var/log/hosteurbackup.log 2>>/var/log/hosteurbackup_err.log
+          restic prune >>/var/log/hosteurbackup.log 2>>/var/log/hosteurbackup_err.log
           EOM
           chmod +x /root/hosteurbackup.sh
           echo "*/5 * * * * /root/hosteurbackup.sh" > /var/spool/cron/root
