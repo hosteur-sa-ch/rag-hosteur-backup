@@ -71,6 +71,30 @@ settings:
       caption: Path to backup
       default: /var/www/webroot
       required: true
+    - type: spinner
+      name: spretday
+      caption: Days of retention
+      min: 1
+      max: 30
+      increment: 1
+      decimalPrecision: ''
+      hidden: false
+    - type: spinner
+      name: spretmonth
+      caption: Months of retention
+      min: 0
+      max: 12
+      increment: 1
+      decimalPrecision: ''
+      hidden: false
+    - type: spinner
+      name: spretyear
+      caption: Years of retention
+      min: 0
+      max: 10
+      increment: 1
+      decimalPrecision: ''
+      hidden: false
 
 buttons:
   - confirmText: Start manual backup now?
@@ -89,6 +113,7 @@ onInstall:
     - adjust-env-vars
     - restic-deploy
     - restic-init
+    - restic-cron
 
 onUninstall:
     - restic-remove
@@ -109,15 +134,30 @@ actions:
         yum install yum-plugin-copr -y
         yum copr enable copart/restic -y
         yum install restic -y
-    writeFile:
-        nodeId: ${globals.nodeID}
-        path: /etc/cron.d/hosteurbackup
-        body: "*/5 * * * * restic backup --tag Scheduled $RESTIC_BACKUPPATH >>/var/log/hosteurbackup.log 2>/var/log/hosteurbackup_err.log"
     user: root
     
   restic-init:
     cmd[${globals.nodeID}]: |-
         restic init
+    user: root
+
+  restic-cron:
+    cmd[${globals.nodeID}]: |-
+          touch /var/spool/cron/root
+          /usr/bin/crontab /var/spool/cron/root
+          cat > /root/hosteurbackup.sh <<-EOM
+          #!/bin/bash
+          export AWS_ACCESS_KEY_ID=${settings.s3ak}
+          export AWS_SECRET_ACCESS_KEY=${settings.s3sk}
+          export RESTIC_REPOSITORY=s3:s3.hosteur.io/${globals.env}-node${globals.nodeID}-${fn.random}
+          export RESTIC_PASSWORD=${settings.s3bucketpass}
+          export RESTIC_BACKUPPATH=${settings.backuppath}
+          restic backup --tag Scheduled $RESTIC_BACKUPPATH >>/var/log/hosteurbackup.log 2>/var/log/hosteurbackup_err.log
+          restic forget --keep-daily ${settings.spretday} --keep-monthly ${settings.spretmonth} --keep-yearly ${settings.spretyear} >>/var/log/hosteurbackup.log 2>/var/log/hosteurbackup_err.log
+          restic prune >>/var/log/hosteurbackup.log 2>/var/log/hosteurbackup_err.log
+          EOM
+          chmod +x /root/hosteurbackup.sh
+          echo "*/5 * * * * /root/hosteurbackup.sh" > /var/spool/cron/root
     user: root
 
   remove-env-vars:
