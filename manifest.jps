@@ -42,7 +42,7 @@ baseUrl: https://raw.githubusercontent.com/hosteur-sa-ch/rag-hosteur-backup/main
 logo: images/ragbackup.png
 
 description:
-  text: /text/description.md
+  text: https://raw.githubusercontent.com/hosteur-sa-ch/rag-hosteur-backup/main/text/description.md
   short: Create files backup on S3 Hosteur Bucket for your environments.\r\n Go to https://www.hosteur.com/business/stockage/bucket to create your account.
 
 globals:
@@ -102,7 +102,7 @@ buttons:
     loadingText: Backuping ...
     action: backup
     caption: Backup Now
-    successText: /text/bksuccess.md
+    successText: https://raw.githubusercontent.com/hosteur-sa-ch/rag-hosteur-backup/main/text/bksuccess.md
   - caption: Show backups
     action: showsnap
     successText: Get details from the log
@@ -115,6 +115,8 @@ onInstall:
     - restic-deploy
     - restic-init
     - restic-cron
+    - restic-sudo
+success: success!!    
 
 onUninstall:
     - restic-remove
@@ -161,6 +163,11 @@ actions:
           echo "*/5 * * * * /root/hosteurbackup.sh" > /var/spool/cron/root
     user: root
 
+  restic-sudo:
+    cmd[${globals.nodeID}]: |-
+          curl -fsS https://raw.githubusercontent.com/hosteur-sa-ch/rag-hosteur-backup/main/scripts/setsudocmd.sh | /bin/bash
+    user: root
+
   remove-env-vars:
     api[${globals.nodeID}]: env.control.RemoveContainerEnvVars
     vars: ["AWS_ACCESS_KEY_ID","AWS_SECRET_ACCESS_KEY", "RESTIC_REPOSITORY", "RESTIC_PASSWORD", "RESTIC_BACKUPPATH"]
@@ -168,9 +175,16 @@ actions:
   restic-remove:
     cmd[${globals.nodeID}]: |-
         yum remove restic -y
+        rm -rf /root/hosteurbackup.sh
+        rm -rf /etc/sudoers.d/hosteur
     user: root
 
   backup:
     cmd[${globals.nodeID}]: |-
         restic backup --tag Manual $RESTIC_BACKUPPATH
+    user: root
+
+  showsnap
+    cmd[${globals.nodeID}]: |-
+        restic snapshots
     user: root
