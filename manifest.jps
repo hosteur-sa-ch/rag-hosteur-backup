@@ -184,7 +184,7 @@ actions:
         restic backup --tag Manual $RESTIC_BACKUPPATH
     user: root
 
-  showsnap
+  showsnap:
     cmd[${globals.nodeID}]: |-
         restic snapshots
     user: root
