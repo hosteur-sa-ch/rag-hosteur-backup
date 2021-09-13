@@ -1,0 +1,51 @@
+<script src="https://unpkg.com/jquery/dist/jquery.min.js"></script>
+<script src="https://unpkg.com/gridjs-jquery/dist/gridjs.production.min.js"></script>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <title>Ragnarokkr Backup for Hosteur Backup</title>
+    <script src="https://unpkg.com/jquery@3.5.1/dist/jquery.min.js"></script>
+    <script src="https://unpkg.com/gridjs-jquery/dist/gridjs.development.js"></script>
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="https://unpkg.com/gridjs/dist/theme/mermaid.min.css"
+    />
+  </head>
+  <body>
+    <h1>
+      Ragnarokkr Backup for Hosteur Backup
+    </h1>
+  <p><b>Backup Stats</b></p>
+  <p>{{ resticstats }}</p>
+	<h2>Snapshots list</h2>
+    <div id="wrapper"></div>
+
+    <script>
+	  
+    $("div#wrapper").Grid({
+		columns: [
+			'Time', 'Snapshot ID','Hostname', 'Username', 'paths', 'tags',
+		],
+		sort: true,
+		search: true,
+		server: {
+			url: './snap/',
+			then: data => data.map(snap => [snap.time, snap.short_id, snap.hostname, snap.username, snap.paths, snap.tags])
+		} 
+		});
+    </script>
+	<div>
+	<h2>Choose a restore point</h2>
+	<form action="restore" method="get" target="_blank">
+		  <label for="fname">Snapshot ID:</label>
+  		<input type="text" id="sid" name="sid"><br><br>
+  		<label for="lname">Restore Path:</label>
+  		<input type="text" id="rpath" name="rpath"><br><br>
+  		<input type="submit" value="Start Restore">
+	</form>
+	</div>
+  </body>
