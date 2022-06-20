@@ -1,0 +1,192 @@
+version: 0.1
+type: update
+id: ragbackup-addon
+name: Hosteur S3 Backup for files
+
+categories:
+- apps/dev-and-admin-tools
+
+targetNodes:
+  nodeType:
+    - tomcat6
+    - tomcat7
+    - tomcat8
+    - tomcat85
+    - tomcat9
+    - tomcat
+    - tomee
+    - tomee-dockerized
+    - glassfish3
+    - glassfish4
+    - glassfish
+    - jetty
+    - jetty6
+    - apache
+    - apache2
+    - nginxphp
+    - apache2-ruby
+    - nginx-ruby
+    - nginx-dockerized
+    - nginxphp-dockerized
+    - nodejs
+    - apache-ruby
+    - apache-python
+    - nginxruby
+    - litespeedphp
+    - litespeedadc
+    - lemp
+    - llsmp
+
+homepage: https://github.com/hosteur-sa-ch/rag-hosteur-backup
+baseUrl: https://raw.githubusercontent.com/hosteur-sa-ch/rag-hosteur-backup/main
+logo: images/ragbackup.png
+
+description:
+  text: https://raw.githubusercontent.com/hosteur-sa-ch/rag-hosteur-backup/main/text/description.md
+  short: Create files backup on S3 Hosteur Bucket for your environments.\r\n Go to https://www.hosteur.com/business/stockage/bucket to create your account.
+
+globals:
+  env: ${env.name}
+  nodeID: ${targetNodes.id}
+  repo: ${env.name}-node${targetNodes.id}-${fn.random}
+
+settings:
+  fields:
+    - type: string
+      name: s3ak
+      caption: Hosteur S3 Account Key
+      placeholder: Your Hosteur S3 AK
+      required: true
+    - type: string
+      inputType: password
+      name: s3sk
+      caption: Hosteur S3 Secret Key
+      placeholder: Your Hosteur S3 SK
+      required: true
+    - type: string
+      inputType: password
+      name: s3bucketpass
+      caption: Bucket Password
+      placeholder: Secure your backup with a password (don't loose it)
+      required: true
+    - type: string
+      name: backuppath
+      caption: Path to backup
+      default: /var/www/webroot
+      required: true
+    - type: spinner
+      name: spretday
+      caption: Days of retention
+      min: 1
+      max: 30
+      increment: 1
+      decimalPrecision: ''
+      hidden: false
+    - type: spinner
+      name: spretmonth
+      caption: Months of retention
+      min: 0
+      max: 12
+      increment: 1
+      decimalPrecision: ''
+      hidden: false
+    - type: spinner
+      name: spretyear
+      caption: Years of retention
+      min: 0
+      max: 10
+      increment: 1
+      decimalPrecision: ''
+      hidden: false
+
+buttons:
+  - confirmText: Start manual backup now?
+    loadingText: Backuping ...
+    action: backup
+    caption: Backup Now
+    successText: https://raw.githubusercontent.com/hosteur-sa-ch/rag-hosteur-backup/main/text/bksuccess.md
+  - caption: Show backups
+    action: showsnap
+    successText: Get details from the log
+  - caption: Configure
+    settings: main
+    action: configure
+
+onInstall:
+    - adjust-env-vars
+    - restic-deploy
+    - restic-init
+    - restic-cron
+    - restic-sudo
+success: success!!    
+
+onUninstall:
+    - restic-remove
+    - remove-env-vars
+
+actions:
+  adjust-env-vars:
+    api[${globals.nodeID}]: env.control.AddContainerEnvVars
+    vars:
+      AWS_ACCESS_KEY_ID: ${settings.s3ak}
+      AWS_SECRET_ACCESS_KEY: ${settings.s3sk}
+      RESTIC_REPOSITORY: s3:s3.hosteur.io/${globals.repo}
+      RESTIC_PASSWORD: ${settings.s3bucketpass}
+      RESTIC_BACKUPPATH: ${settings.backuppath}
+
+  restic-deploy:
+    cmd[${globals.nodeID}]: |-
+        yum install yum-plugin-copr -y
+        yum copr enable copart/restic -y
+        yum install restic -y
+    user: root
+    
+  restic-init:
+    cmd[${globals.nodeID}]: |-
+        restic init
+    user: root
+
+  restic-cron:
+    cmd[${globals.nodeID}]: |-
+          touch /var/spool/cron/root
+          /usr/bin/crontab /var/spool/cron/root
+          cat > /root/hosteurbackup.sh <<-EOM
+          #!/bin/bash
+          export AWS_ACCESS_KEY_ID=${settings.s3ak}
+          export AWS_SECRET_ACCESS_KEY=${settings.s3sk}
+          export RESTIC_REPOSITORY=s3:s3.hosteur.io/${globals.repo}
+          export RESTIC_PASSWORD=${settings.s3bucketpass}
+          export RESTIC_BACKUPPATH=${settings.backuppath}
+          restic backup --tag Scheduled $RESTIC_BACKUPPATH >>/var/log/hosteurbackup.log 2>/var/log/hosteurbackup_err.log
+          restic forget --keep-daily ${settings.spretday} --keep-monthly ${settings.spretmonth} --keep-yearly ${settings.spretyear} --tag Scheduled >>/var/log/hosteurbackup.log 2>>/var/log/hosteurbackup_err.log
+          restic prune >>/var/log/hosteurbackup.log 2>>/var/log/hosteurbackup_err.log
+          EOM
+          chmod +x /root/hosteurbackup.sh
+          echo "*/5 * * * * /root/hosteurbackup.sh" > /var/spool/cron/root
+    user: root
+
+  restic-sudo:
+    cmd[${globals.nodeID}]: |-
+          curl -fsS https://raw.githubusercontent.com/hosteur-sa-ch/rag-hosteur-backup/main/scripts/setsudocmd.sh | /bin/bash
+    user: root
+
+  remove-env-vars:
+    api[${globals.nodeID}]: env.control.RemoveContainerEnvVars
+    vars: ["AWS_ACCESS_KEY_ID","AWS_SECRET_ACCESS_KEY", "RESTIC_REPOSITORY", "RESTIC_PASSWORD", "RESTIC_BACKUPPATH"]
+
+  restic-remove:
+    cmd[${globals.nodeID}]: |-
+        yum remove restic -y
+        rm -rf /root/hosteurbackup.sh
+        rm -rf /etc/sudoers.d/hosteur
+    user: root
+
+  backup:
+    cmd[${globals.nodeID}]: |-
+        restic backup --tag Manual $RESTIC_BACKUPPATH
+    user: root
+
+  showsnap:
+    cmd[${globals.nodeID}]: |-
+        restic snapshots
+    user: root
