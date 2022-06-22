@@ -17,6 +17,23 @@ description:
 targetNodes: 
   nodeType: [docker]
 
+onBeforeInit: |
+  let nodeGroups = jps;
+
+  return {
+    result: 0,
+    settings : {
+      deploy : {
+        fields: [{
+          type : "list",
+          caption: nodeGroups.toString(),
+          name : "custom_field",
+          values:  {1:"dzed"},
+        }]
+      }
+    }
+  };
+
 settings:
   deploy:
     fields:
@@ -25,17 +42,19 @@ settings:
 
 buttons:
   - settings: deploy
-    action: deploy
+    action: test
     caption: Deploy backup
     submitButtonText: Deploy backup
 
-
-onInstall:
-  log: ${nodeIDs}
-
 actions:
+  test: 
+    log: ${env} ${settings}
   deploy:
-    install:
+    install[????]:
       jps: https://raw.githubusercontent.com/hugo-harkness/rag-hosteur-backup/main/manifest.jps
       globals:
         nodeID: test
+
+
+
+

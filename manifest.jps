@@ -25,27 +25,34 @@ settings:
       name: resticui_pass
       caption: UI Password
       required: true
-
-nodes:
-  cloudlets: 1
-  nodeType: docker
-  image: hosteurdkuser/hosteur-rag-backup
-  env:
-    RESTICUI_PASSWORD: ${settings.resticui_pass}
-    RESTICUI_USERNAME: ${settings.resticui_user}
-        
+    - type: string
+      name: s3ak
+      caption: Hosteur S3 Account Key
+      placeholder: Your Hosteur S3 AK
+      required: true
+    - type: string
+      inputType: password
+      name: s3sk
+      caption: Hosteur S3 Secret Key
+      placeholder: Your Hosteur S3 SK
+      required: true
+       
 
 onInstall:
-    - addui
+    addui:
 success: success!!
 
 actions:
   addui:
     addNodes:
     - displayName: hosteur-rag-backup
+      nodeGroup: hosteur-rag-backup-ui
       dockerName: hosteurdkuser/hosteur-rag-backup
       dockerEnvVars:
         RESTICUI_PASSWORD: ${settings.resticui_pass}
         RESTICUI_USERNAME: ${settings.resticui_user}
-
-        
+        AWS_ACCESS_KEY_ID: ${settings.s3ak}
+        AWS_SECRET_ACCESS_KEY: ${settings.s3sk}
+        RESTIC_PASSWORD: ${fn.password}
+      dockerVolumes:
+        - "/etc/hosteur-rag-backup-ui"

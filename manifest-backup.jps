@@ -49,26 +49,9 @@ globals:
   env: ${env.name}
   nodeID: ${targetNodes.id}
   repo: ${env.name}-node${targetNodes.id}-${fn.random}
-
+  
 settings:
   fields:
-    - type: string
-      name: s3ak
-      caption: Hosteur S3 Account Key
-      placeholder: Your Hosteur S3 AK
-      required: true
-    - type: string
-      inputType: password
-      name: s3sk
-      caption: Hosteur S3 Secret Key
-      placeholder: Your Hosteur S3 SK
-      required: true
-    - type: string
-      inputType: password
-      name: s3bucketpass
-      caption: Bucket Password
-      placeholder: Secure your backup with a password (don't loose it)
-      required: true
     - type: string
       name: backuppath
       caption: Path to backup
@@ -113,11 +96,15 @@ buttons:
     action: configure
 
 onInstall:
+    - testUIPresent
+    - adjust-env-vars-ui
+    - append-nodes-ui
     - adjust-env-vars
-    - restic-deploy
-    - restic-init
-    - restic-cron
-    - restic-sudo
+    - link-ui-to-agent
+    #- restic-deploy
+    #- restic-init
+    #- restic-cron
+    #- restic-sudo
 success: success!!    
 
 onUninstall:
@@ -125,14 +112,42 @@ onUninstall:
     - remove-env-vars
 
 actions:
+  testUIPresent:
+    set:
+      UIPresent: false
+    forEach(env.nodes):
+      if("${@i.nodeGroup}" == "hosteur-rag-backup-ui"):
+        set:
+          UIPresent: true
+    if(${this.UIPresent} == false):
+      stopEvent:
+        type: error
+        message: Hosteur rag backup UI need to be installed. https://www.exemple.com
+
+  adjust-env-vars-ui:
+    api[hosteur-rag-backup-ui]: env.control.AddContainerEnvVars
+    vars:
+      NODE${targetNodes.id}_RESTIC_REPOSITORY: s3:s3.hosteur.io/${globals.repo}
+
+  append-nodes-ui:
+    appendFile:
+      nodeGroup: hosteur-rag-backup-ui
+      path: /etc/hosteur-rag-backup-ui/nodelist.prop
+      body: NODE${targetNodes.id}
+
   adjust-env-vars:
     api[${globals.nodeID}]: env.control.AddContainerEnvVars
     vars:
-      AWS_ACCESS_KEY_ID: ${settings.s3ak}
-      AWS_SECRET_ACCESS_KEY: ${settings.s3sk}
       RESTIC_REPOSITORY: s3:s3.hosteur.io/${globals.repo}
-      RESTIC_PASSWORD: ${settings.s3bucketpass}
       RESTIC_BACKUPPATH: ${settings.backuppath}
+
+  link-ui-to-agent:
+    api[${globals.nodeID}]: env.control.ChangeTopology
+    env: '${env}'
+    nodes:
+      - docker:
+          links:
+            - "hosteur-rag-backup-ui:BACKUI"
 
   restic-deploy:
     cmd[${globals.nodeID}]: |-
