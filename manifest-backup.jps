@@ -4,7 +4,7 @@ id: ragbackup-addon
 name: Hosteur S3 Backup for files
 
 categories:
-- apps/dev-and-admin-tools
+  - apps/dev-and-admin-tools
 
 targetNodes:
   nodeType:
@@ -49,7 +49,7 @@ globals:
   env: ${env.name}
   nodeID: ${targetNodes.id}
   repo: ${env.name}-node${targetNodes.id}-${fn.random}
-  
+
 settings:
   fields:
     - type: string
@@ -63,7 +63,7 @@ settings:
       min: 1
       max: 30
       increment: 1
-      decimalPrecision: ''
+      decimalPrecision: ""
       hidden: false
     - type: spinner
       name: spretmonth
@@ -71,7 +71,7 @@ settings:
       min: 0
       max: 12
       increment: 1
-      decimalPrecision: ''
+      decimalPrecision: ""
       hidden: false
     - type: spinner
       name: spretyear
@@ -79,7 +79,7 @@ settings:
       min: 0
       max: 10
       increment: 1
-      decimalPrecision: ''
+      decimalPrecision: ""
       hidden: false
 
 buttons:
@@ -95,21 +95,60 @@ buttons:
     settings: main
     action: configure
 
+#onBeforeInstall: |
+#  return {
+#    result: 0,
+#    actions : {
+#      adjust-env-vars-ui: {
+#        api: "jelastic.environment.control.AddContainerEnvVars",
+#        nodeGroup: "hosteur-rag-backup-ui",
+#        vars: {
+#          NODE${targetNodes.id}_RESTIC_REPOSITORY: "s3:s3.hosteur.io/${globals.repo}"
+#        }
+#      }
+#    }
+#  };
+
+onBeforeInstall: |
+  let actions = Object.assign({}, jps.actions);
+
+  let UIenvs = jelastic.environment.control.GetContainerEnvVarsByGroup({envName: '${env.name}', nodeGroup: "hosteur-rag-backup-ui"});
+
+  let envNodes = "";
+
+  if (UIenvs.result == 0) {
+    envNodes = UIenvs.object.RESTICUI_NODES;
+    if(!envNodes) envNodes = "";
+  }
+
+  actions.adjustEnvVarsUi = {
+    "api": "jelastic.environment.control.AddContainerEnvVars",
+    "nodeGroup": "hosteur-rag-backup-ui",
+    "vars": {
+      NODE${targetNodes.id}_RESTIC_REPOSITORY: "s3:s3.hosteur.io/${globals.repo}",
+      RESTICUI_NODES: envNodes + "NODE${targetNodes.id},"
+    }
+  }
+
+  return {
+    result: 0,
+    actions: actions
+  };
+
 onInstall:
-    - testUIPresent
-    - adjust-env-vars-ui
-    - append-nodes-ui
-    - adjust-env-vars
-    - link-ui-to-agent
-    #- restic-deploy
-    #- restic-init
-    #- restic-cron
-    #- restic-sudo
-success: success!!    
+  - testUIPresent
+  - adjustEnvVarsUi
+  - adjust-env-vars
+  #- link-ui-to-agent
+  #- restic-deploy
+  #- restic-init
+  #- restic-cron
+  #- restic-sudo
+success: success!!
 
 onUninstall:
-    - restic-remove
-    - remove-env-vars
+  - restic-remove
+  - remove-env-vars
 
 actions:
   testUIPresent:
@@ -124,17 +163,6 @@ actions:
         type: error
         message: Hosteur rag backup UI need to be installed. https://www.exemple.com
 
-  adjust-env-vars-ui:
-    api[hosteur-rag-backup-ui]: env.control.AddContainerEnvVars
-    vars:
-      NODE${targetNodes.id}_RESTIC_REPOSITORY: s3:s3.hosteur.io/${globals.repo}
-
-  append-nodes-ui:
-    appendFile:
-      nodeGroup: hosteur-rag-backup-ui
-      path: /etc/hosteur-rag-backup-ui/nodelist.prop
-      body: NODE${targetNodes.id}
-
   adjust-env-vars:
     api[${globals.nodeID}]: env.control.AddContainerEnvVars
     vars:
@@ -143,7 +171,7 @@ actions:
 
   link-ui-to-agent:
     api[${globals.nodeID}]: env.control.ChangeTopology
-    env: '${env}'
+    env: "${env}"
     nodes:
       - docker:
           links:
@@ -151,57 +179,64 @@ actions:
 
   restic-deploy:
     cmd[${globals.nodeID}]: |-
-        yum install yum-plugin-copr -y
-        yum copr enable copart/restic -y
-        yum install restic -y
+      yum install yum-plugin-copr -y
+      yum copr enable copart/restic -y
+      yum install restic -y
     user: root
-    
+
   restic-init:
     cmd[${globals.nodeID}]: |-
-        restic init
+      restic init
     user: root
 
   restic-cron:
     cmd[${globals.nodeID}]: |-
-          touch /var/spool/cron/root
-          /usr/bin/crontab /var/spool/cron/root
-          cat > /root/hosteurbackup.sh <<-EOM
-          #!/bin/bash
-          export AWS_ACCESS_KEY_ID=${settings.s3ak}
-          export AWS_SECRET_ACCESS_KEY=${settings.s3sk}
-          export RESTIC_REPOSITORY=s3:s3.hosteur.io/${globals.repo}
-          export RESTIC_PASSWORD=${settings.s3bucketpass}
-          export RESTIC_BACKUPPATH=${settings.backuppath}
-          restic backup --tag Scheduled $RESTIC_BACKUPPATH >>/var/log/hosteurbackup.log 2>/var/log/hosteurbackup_err.log
-          restic forget --keep-daily ${settings.spretday} --keep-monthly ${settings.spretmonth} --keep-yearly ${settings.spretyear} --tag Scheduled >>/var/log/hosteurbackup.log 2>>/var/log/hosteurbackup_err.log
-          restic prune >>/var/log/hosteurbackup.log 2>>/var/log/hosteurbackup_err.log
-          EOM
-          chmod +x /root/hosteurbackup.sh
-          echo "*/5 * * * * /root/hosteurbackup.sh" > /var/spool/cron/root
+      touch /var/spool/cron/root
+      /usr/bin/crontab /var/spool/cron/root
+      cat > /root/hosteurbackup.sh <<-EOM
+      #!/bin/bash
+      export AWS_ACCESS_KEY_ID=${settings.s3ak}
+      export AWS_SECRET_ACCESS_KEY=${settings.s3sk}
+      export RESTIC_REPOSITORY=s3:s3.hosteur.io/${globals.repo}
+      export RESTIC_PASSWORD=${settings.s3bucketpass}
+      export RESTIC_BACKUPPATH=${settings.backuppath}
+      restic backup --tag Scheduled $RESTIC_BACKUPPATH >>/var/log/hosteurbackup.log 2>/var/log/hosteurbackup_err.log
+      restic forget --keep-daily ${settings.spretday} --keep-monthly ${settings.spretmonth} --keep-yearly ${settings.spretyear} --tag Scheduled >>/var/log/hosteurbackup.log 2>>/var/log/hosteurbackup_err.log
+      restic prune >>/var/log/hosteurbackup.log 2>>/var/log/hosteurbackup_err.log
+      EOM
+      chmod +x /root/hosteurbackup.sh
+      echo "*/5 * * * * /root/hosteurbackup.sh" > /var/spool/cron/root
     user: root
 
   restic-sudo:
     cmd[${globals.nodeID}]: |-
-          curl -fsS https://raw.githubusercontent.com/hosteur-sa-ch/rag-hosteur-backup/main/scripts/setsudocmd.sh | /bin/bash
+      curl -fsS https://raw.githubusercontent.com/hosteur-sa-ch/rag-hosteur-backup/main/scripts/setsudocmd.sh | /bin/bash
     user: root
 
   remove-env-vars:
     api[${globals.nodeID}]: env.control.RemoveContainerEnvVars
-    vars: ["AWS_ACCESS_KEY_ID","AWS_SECRET_ACCESS_KEY", "RESTIC_REPOSITORY", "RESTIC_PASSWORD", "RESTIC_BACKUPPATH"]
+    vars:
+      [
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "RESTIC_REPOSITORY",
+        "RESTIC_PASSWORD",
+        "RESTIC_BACKUPPATH",
+      ]
 
   restic-remove:
     cmd[${globals.nodeID}]: |-
-        yum remove restic -y
-        rm -rf /root/hosteurbackup.sh
-        rm -rf /etc/sudoers.d/hosteur
+      yum remove restic -y
+      rm -rf /root/hosteurbackup.sh
+      rm -rf /etc/sudoers.d/hosteur
     user: root
 
   backup:
     cmd[${globals.nodeID}]: |-
-        restic backup --tag Manual $RESTIC_BACKUPPATH
+      restic backup --tag Manual $RESTIC_BACKUPPATH
     user: root
 
   showsnap:
     cmd[${globals.nodeID}]: |-
-        restic snapshots
+      restic snapshots
     user: root
