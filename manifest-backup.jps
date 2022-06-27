@@ -95,22 +95,8 @@ buttons:
     settings: main
     action: configure
 
-#onBeforeInstall: |
-#  return {
-#    result: 0,
-#    actions : {
-#      adjust-env-vars-ui: {
-#        api: "jelastic.environment.control.AddContainerEnvVars",
-#        nodeGroup: "hosteur-rag-backup-ui",
-#        vars: {
-#          NODE${targetNodes.id}_RESTIC_REPOSITORY: "s3:s3.hosteur.io/${globals.repo}"
-#        }
-#      }
-#    }
-#  };
-
 onBeforeInstall: |
-  let actions = Object.assign({}, jps.actions);
+  let newActions = Object.assign({}, jps.actions);
 
   let UIenvs = jelastic.environment.control.GetContainerEnvVarsByGroup({envName: '${env.name}', nodeGroup: "hosteur-rag-backup-ui"});
 
@@ -121,7 +107,7 @@ onBeforeInstall: |
     if(!envNodes) envNodes = "";
   }
 
-  actions.adjustEnvVarsUi = {
+  newActions.adjustEnvVarsUi = {
     "api": "jelastic.environment.control.AddContainerEnvVars",
     "nodeGroup": "hosteur-rag-backup-ui",
     "vars": {
@@ -132,18 +118,18 @@ onBeforeInstall: |
 
   return {
     result: 0,
-    actions: actions
+    actions: newActions
   };
 
 onInstall:
   - testUIPresent
   - adjustEnvVarsUi
   - adjust-env-vars
-  #- link-ui-to-agent
-  #- restic-deploy
-  #- restic-init
-  #- restic-cron
-  #- restic-sudo
+  - link-ui-to-agent
+  - restic-deploy
+  - restic-init
+  - restic-cron
+  - restic-sudo
 success: success!!
 
 onUninstall:
@@ -170,12 +156,13 @@ actions:
       RESTIC_BACKUPPATH: ${settings.backuppath}
 
   link-ui-to-agent:
-    api[${globals.nodeID}]: env.control.ChangeTopology
-    env: "${env}"
-    nodes:
-      - docker:
-          links:
-            - "hosteur-rag-backup-ui:BACKUI"
+    api:
+      method: environment.control.linkdockernodes
+      params:
+          envName : ${env.name}
+          sourceNodeId : ${nodes.hosteur-rag-backup-ui[0].id}
+          targetNodeId : ${globals.nodeID}
+          alias : "UI"
 
   restic-deploy:
     cmd[${globals.nodeID}]: |-
