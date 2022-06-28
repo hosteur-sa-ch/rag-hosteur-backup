@@ -39,7 +39,8 @@ settings:
        
 
 onInstall:
-    addui:
+  - addui
+  - addfav
 success: success!!
 
 actions:
@@ -54,3 +55,14 @@ actions:
         AWS_ACCESS_KEY_ID: ${settings.s3ak}
         AWS_SECRET_ACCESS_KEY: ${settings.s3sk}
         RESTIC_PASSWORD: ${fn.password}
+        RESTICUI_RESTORE_FOLDER: /backup-restore
+      dockerVolumes:
+        - "/backup-restore"
+  
+  addfav:
+    api:
+      method: environment.file.addfavorite
+      params:
+          envName : ${env.name}
+          nodeGroup: hosteur-rag-backup-ui
+          path : "/backup-restore"

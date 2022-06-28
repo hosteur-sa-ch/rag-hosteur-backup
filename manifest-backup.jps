@@ -48,6 +48,7 @@ description:
 globals:
   env: ${env.name}
   nodeID: ${targetNodes.id}
+  nodeGroup: ${targetNodes.nodeGroup}
   repo: ${env.name}-node${targetNodes.id}-${fn.random}
 
 settings:
@@ -112,6 +113,7 @@ onBeforeInstall: |
     "nodeGroup": "hosteur-rag-backup-ui",
     "vars": {
       NODE${targetNodes.id}_RESTIC_REPOSITORY: "s3:s3.hosteur.io/${globals.repo}",
+      NODE${targetNodes.id}_RESTIC_PASSWORD: "${fn.password(20)}",
       RESTICUI_NODES: envNodes + "NODE${targetNodes.id},"
     }
   }
@@ -130,11 +132,15 @@ onInstall:
   - restic-init
   - restic-cron
   - restic-sudo
+  - add-restore-volume-fav
+  - add-restore-volume
+  - restart-ui
 success: success!!
 
 onUninstall:
   - restic-remove
   - remove-env-vars
+  - remove-link-ui-to-agent
 
 actions:
   testUIPresent:
@@ -152,7 +158,6 @@ actions:
   adjust-env-vars:
     api[${globals.nodeID}]: env.control.AddContainerEnvVars
     vars:
-      RESTIC_REPOSITORY: s3:s3.hosteur.io/${globals.repo}
       RESTIC_BACKUPPATH: ${settings.backuppath}
 
   link-ui-to-agent:
@@ -173,7 +178,7 @@ actions:
 
   restic-init:
     cmd[${globals.nodeID}]: |-
-      restic init
+      RESTIC_REPOSITORY=$UI_NODE${targetNodes.id}_RESTIC_REPOSITORY RESTIC_PASSWORD=$UI_NODE${targetNodes.id}_RESTIC_PASSWORD AWS_ACCESS_KEY_ID=$UI_AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY=$UI_AWS_SECRET_ACCESS_KEY restic init
     user: root
 
   restic-cron:
@@ -182,10 +187,10 @@ actions:
       /usr/bin/crontab /var/spool/cron/root
       cat > /root/hosteurbackup.sh <<-EOM
       #!/bin/bash
-      export AWS_ACCESS_KEY_ID=${settings.s3ak}
-      export AWS_SECRET_ACCESS_KEY=${settings.s3sk}
-      export RESTIC_REPOSITORY=s3:s3.hosteur.io/${globals.repo}
-      export RESTIC_PASSWORD=${settings.s3bucketpass}
+      export AWS_ACCESS_KEY_ID=$UI_AWS_ACCESS_KEY_ID
+      export AWS_SECRET_ACCESS_KEY=$UI_AWS_SECRET_ACCESS_KEY
+      export RESTIC_REPOSITORY=$UI_NODE${targetNodes.id}_RESTIC_REPOSITORY
+      export RESTIC_PASSWORD=$UI_NODE${targetNodes.id}_RESTIC_PASSWORD
       export RESTIC_BACKUPPATH=${settings.backuppath}
       restic backup --tag Scheduled $RESTIC_BACKUPPATH >>/var/log/hosteurbackup.log 2>/var/log/hosteurbackup_err.log
       restic forget --keep-daily ${settings.spretday} --keep-monthly ${settings.spretmonth} --keep-yearly ${settings.spretyear} --tag Scheduled >>/var/log/hosteurbackup.log 2>>/var/log/hosteurbackup_err.log
@@ -200,14 +205,31 @@ actions:
       curl -fsS https://raw.githubusercontent.com/hosteur-sa-ch/rag-hosteur-backup/main/scripts/setsudocmd.sh | /bin/bash
     user: root
 
+  add-restore-volume:
+    api:
+      method: environment.control.setdockervolumesfrom
+      params:
+          envName : ${env.name}
+          nodeGroup: ${globals.nodeGroup}
+          data: "[{\"sourcePath\": \"/backup-restore\", \"readOnly\": false, \"protocol\": \"NFS\", \"sourceNodeId\": ${nodes.hosteur-rag-backup-ui[0].id} }]"
+
+  add-restore-volume-fav:
+    api:
+      method: environment.file.addfavorite
+      params:
+          envName : ${env.name}
+          nodeGroup: ${globals.nodeGroup}
+          path : "/backup-restore"
+  
+  restart-ui:
+    restartNodes:
+    - nodeGroup: hosteur-rag-backup-ui
+      reboot: true
+
   remove-env-vars:
     api[${globals.nodeID}]: env.control.RemoveContainerEnvVars
     vars:
       [
-        "AWS_ACCESS_KEY_ID",
-        "AWS_SECRET_ACCESS_KEY",
-        "RESTIC_REPOSITORY",
-        "RESTIC_PASSWORD",
         "RESTIC_BACKUPPATH",
       ]
 
@@ -218,12 +240,33 @@ actions:
       rm -rf /etc/sudoers.d/hosteur
     user: root
 
-  backup:
+  remove-link-ui-to-agent:
+    api:
+      method: environment.control.unlinkdockernodes
+      params:
+          envName : ${env.name}
+          sourceNodeId : ${nodes.hosteur-rag-backup-ui[0].id}
+          targetNodeId : ${globals.nodeID}
+          alias : "UI"
+
+  remove-restore-volume-fav:
+    api:
+      method: environment.file.removefavorite
+      params:
+          envName : ${env.name}
+          nodeGroup: ${globals.nodeGroup}
+          path : "/backup-restore"
+
+  remove-restore-volume:
+    api:
+      method: environment.control.removecontainervolumes
+      params:
+          envName : ${env.name}
+          nodeGroup: ${globals.nodeGroup}
+          data: "/backup-restore"
+
+
+  backup: # envars (links)
     cmd[${globals.nodeID}]: |-
       restic backup --tag Manual $RESTIC_BACKUPPATH
-    user: root
-
-  showsnap:
-    cmd[${globals.nodeID}]: |-
-      restic snapshots
     user: root
