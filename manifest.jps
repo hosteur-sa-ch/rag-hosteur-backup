@@ -46,18 +46,25 @@ success: success!!
 actions:
   addui:
     addNodes:
-    - displayName: hosteur-rag-backup
-      nodeGroup: hosteur-rag-backup-ui
+    - nodeGroup: hosteur-rag-backup-ui
       dockerName: hosteurdkuser/hosteur-rag-backup
       dockerEnvVars:
         RESTICUI_PASSWORD: ${settings.resticui_pass}
         RESTICUI_USERNAME: ${settings.resticui_user}
         AWS_ACCESS_KEY_ID: ${settings.s3ak}
         AWS_SECRET_ACCESS_KEY: ${settings.s3sk}
-        RESTIC_PASSWORD: ${fn.password}
+        RESTIC_PASSWORD: ${fn.password(20)}
         RESTICUI_RESTORE_FOLDER: /backup-restore
       dockerVolumes:
         - "/backup-restore"
+
+  groupDisplayName:
+    api:
+      method: environment.control.setnodegroupdisplayname
+      params:
+          envName : ${env.name}
+          nodeGroup: hosteur-rag-backup-ui
+          displayName : "Backup UI"
   
   addfav:
     api:

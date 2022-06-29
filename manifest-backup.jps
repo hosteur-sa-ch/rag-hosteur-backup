@@ -58,6 +58,11 @@ settings:
       caption: Path to backup
       default: /var/www/webroot
       required: true
+    - type: string
+      name: cycle
+      caption: Backup cycle (cron format)
+      default: 0 0 * * *
+      required: true
     - type: spinner
       name: spretday
       caption: Days of retention
@@ -89,9 +94,6 @@ buttons:
     action: backup
     caption: Backup Now
     successText: https://raw.githubusercontent.com/hosteur-sa-ch/rag-hosteur-backup/main/text/bksuccess.md
-  - caption: Show backups
-    action: showsnap
-    successText: Get details from the log
   - caption: Configure
     settings: main
     action: configure
@@ -113,7 +115,6 @@ onBeforeInstall: |
     "nodeGroup": "hosteur-rag-backup-ui",
     "vars": {
       NODE${targetNodes.id}_RESTIC_REPOSITORY: "s3:s3.hosteur.io/${globals.repo}",
-      NODE${targetNodes.id}_RESTIC_PASSWORD: "${fn.password(20)}",
       RESTICUI_NODES: envNodes + "NODE${targetNodes.id},"
     }
   }
@@ -178,11 +179,15 @@ actions:
 
   restic-init:
     cmd[${globals.nodeID}]: |-
-      RESTIC_REPOSITORY=$UI_NODE${targetNodes.id}_RESTIC_REPOSITORY RESTIC_PASSWORD=$UI_NODE${targetNodes.id}_RESTIC_PASSWORD AWS_ACCESS_KEY_ID=$UI_AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY=$UI_AWS_SECRET_ACCESS_KEY restic init
+      RESTIC_REPOSITORY=$UI_NODE${targetNodes.id}_RESTIC_REPOSITORY RESTIC_PASSWORD=$UI_RESTIC_PASSWORD AWS_ACCESS_KEY_ID=$UI_AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY=$UI_AWS_SECRET_ACCESS_KEY restic init
     user: root
 
   restic-cron:
     cmd[${globals.nodeID}]: |-
+      touch /var/log/hosteurbackup.log
+      chmod 766 /var/log/hosteurbackup.log
+      touch /var/log/hosteurbackup_err.log
+      chmod 766 /var/log/hosteurbackup_err.log
       touch /var/spool/cron/root
       /usr/bin/crontab /var/spool/cron/root
       cat > /root/hosteurbackup.sh <<-EOM
@@ -190,14 +195,14 @@ actions:
       export AWS_ACCESS_KEY_ID=$UI_AWS_ACCESS_KEY_ID
       export AWS_SECRET_ACCESS_KEY=$UI_AWS_SECRET_ACCESS_KEY
       export RESTIC_REPOSITORY=$UI_NODE${targetNodes.id}_RESTIC_REPOSITORY
-      export RESTIC_PASSWORD=$UI_NODE${targetNodes.id}_RESTIC_PASSWORD
+      export RESTIC_PASSWORD=$UI_RESTIC_PASSWORD
       export RESTIC_BACKUPPATH=${settings.backuppath}
       restic backup --tag Scheduled $RESTIC_BACKUPPATH >>/var/log/hosteurbackup.log 2>/var/log/hosteurbackup_err.log
       restic forget --keep-daily ${settings.spretday} --keep-monthly ${settings.spretmonth} --keep-yearly ${settings.spretyear} --tag Scheduled >>/var/log/hosteurbackup.log 2>>/var/log/hosteurbackup_err.log
       restic prune >>/var/log/hosteurbackup.log 2>>/var/log/hosteurbackup_err.log
       EOM
       chmod +x /root/hosteurbackup.sh
-      echo "*/5 * * * * /root/hosteurbackup.sh" > /var/spool/cron/root
+      echo "${settings.cycle} /root/hosteurbackup.sh" > /var/spool/cron/root
     user: root
 
   restic-sudo:
@@ -265,8 +270,29 @@ actions:
           nodeGroup: ${globals.nodeGroup}
           data: "/backup-restore"
 
-
   backup: # envars (links)
     cmd[${globals.nodeID}]: |-
-      restic backup --tag Manual $RESTIC_BACKUPPATH
+      RESTIC_REPOSITORY=$UI_NODE${targetNodes.id}_RESTIC_REPOSITORY RESTIC_PASSWORD=$UI_RESTIC_PASSWORD AWS_ACCESS_KEY_ID=$UI_AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY=$UI_AWS_SECRET_ACCESS_KEY restic backup --tag Manual $RESTIC_BACKUPPATH
+    user: root
+
+  configure:
+    api[${globals.nodeID}]: env.control.AddContainerEnvVars
+    vars:
+      RESTIC_BACKUPPATH: ${settings.backuppath}
+    cmd[${globals.nodeID}]: |-
+      touch /var/spool/cron/root
+      /usr/bin/crontab /var/spool/cron/root
+      cat > /root/hosteurbackup.sh <<-EOM
+      #!/bin/bash
+      export AWS_ACCESS_KEY_ID=$UI_AWS_ACCESS_KEY_ID
+      export AWS_SECRET_ACCESS_KEY=$UI_AWS_SECRET_ACCESS_KEY
+      export RESTIC_REPOSITORY=$UI_NODE${targetNodes.id}_RESTIC_REPOSITORY
+      export RESTIC_PASSWORD=$UI_RESTIC_PASSWORD
+      export RESTIC_BACKUPPATH=${settings.backuppath}
+      restic backup --tag Scheduled $RESTIC_BACKUPPATH >>/var/log/hosteurbackup.log 2>/var/log/hosteurbackup_err.log
+      restic forget --keep-daily ${settings.spretday} --keep-monthly ${settings.spretmonth} --keep-yearly ${settings.spretyear} --tag Scheduled >>/var/log/hosteurbackup.log 2>>/var/log/hosteurbackup_err.log
+      restic prune >>/var/log/hosteurbackup.log 2>>/var/log/hosteurbackup_err.log
+      EOM
+      chmod +x /root/hosteurbackup.sh
+      sed -i 's=.*/root/hosteurbackup.*=${settings.cycle} /root/hosteurbackup.sh=' /var/spool/cron/root
     user: root
